@@ -1,0 +1,13 @@
+.gradle
+.idea
+local.properties
+*.iml
+.gdb_history
+fabric.properties
+captures
+output.json
+.ccls-cache
+.env.example
+debug.keystore
+reports
+tmp
