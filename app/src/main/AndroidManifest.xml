@@ -87,6 +87,14 @@
             android:exported="true"
             android:label="@string/activity_vr_calibration"
             />
+        <activity
+            android:name="ui.activity.StoragePermissionActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:screenOrientation="fullUser"
+            android:theme="@style/MyTheme"
+            android:exported="true"
+            android:label="@string/activity_storage_permission"
+            />
     </application>
 
 </manifest>
