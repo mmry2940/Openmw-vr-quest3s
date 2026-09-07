@@ -2,6 +2,7 @@ package utils
 
 import android.content.Context
 import android.util.Log
+import file.DataFilesDiagnostic
 import java.io.File
 import java.io.IOException
 
@@ -31,6 +32,15 @@ object RuntimeValidator {
         return hasNativeLibraries(context) && hasBundledAssets(context)
     }
 
+    fun hasValidDataFiles(context: Context): Boolean {
+        val result = DataFilesDiagnostic.check(context)
+        return result.isValid
+    }
+
+    fun getDataFilesDiagnostic(context: Context): DataFilesDiagnostic.DiagnosticResult {
+        return DataFilesDiagnostic.check(context)
+    }
+
     fun getMissingSummary(context: Context): String {
         val missing = mutableListOf<String>()
         if (!hasNativeLibraries(context)) {
@@ -42,3 +52,4 @@ object RuntimeValidator {
         return if (missing.isEmpty()) "None" else missing.joinToString("\n• ", prefix = "• ")
     }
 }
+

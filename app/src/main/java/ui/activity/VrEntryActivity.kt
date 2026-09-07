@@ -27,8 +27,8 @@ class VrEntryActivity : MainActivity() {
                 return
             }
 
-            if (!utils.RuntimeValidator.isRuntimePayloadValid(this)) {
-                Log.e(TAG, "VrEntryActivity.$source: runtime payload missing, redirecting to LauncherActivity")
+            if (!utils.RuntimeValidator.isRuntimePayloadValid(this) || !utils.RuntimeValidator.hasValidDataFiles(this)) {
+                Log.e(TAG, "VrEntryActivity.$source: runtime payload or game data files missing/invalid, redirecting to LauncherActivity")
                 val launcherIntent = Intent(this, LauncherActivity::class.java)
                 startActivity(launcherIntent)
                 finish()
