@@ -69,10 +69,65 @@ android {
       isReturnDefaultValues = true
     }
   }
+  sourceSets {
+    getByName("main") {
+      jniLibs.srcDirs("src/main/jniLibs")
+    }
+  }
+
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
   }
+}
+
+abstract class CopyPrebuiltNativeLibsTask : DefaultTask() {
+  @get:OutputDirectory
+  abstract val targetDirectory: DirectoryProperty
+
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  @get:Optional
+  abstract val sourceFiles: ConfigurableFileCollection
+
+  @TaskAction
+  fun copyLibs() {
+    val target = targetDirectory.get().asFile
+    target.mkdirs()
+    sourceFiles.files.forEach { file ->
+      if (file.isFile && file.name.endsWith(".so")) {
+        val destName = if (file.name == "libopenmw_vr.so") "libopenmw.so" else file.name
+        val destFile = File(target, destName)
+        if (!destFile.exists() || destFile.length() != file.length()) {
+          file.copyTo(destFile, overwrite = true)
+        }
+      } else if (file.isDirectory) {
+        file.walkTopDown().filter { it.isFile && it.name.endsWith(".so") }.forEach { soFile ->
+          val destName = if (soFile.name == "libopenmw_vr.so") "libopenmw.so" else soFile.name
+          val destFile = File(target, destName)
+          if (!destFile.exists() || destFile.length() != soFile.length()) {
+            soFile.copyTo(destFile, overwrite = true)
+          }
+        }
+      }
+    }
+  }
+}
+
+val copyPrebuiltNativeLibs = tasks.register<CopyPrebuiltNativeLibsTask>("copyPrebuiltNativeLibs") {
+  group = "build"
+  description = "Copies pre-built native libraries (including libopenmw.so) into src/main/jniLibs"
+  targetDirectory.set(layout.projectDirectory.dir("src/main/jniLibs/arm64-v8a"))
+  sourceFiles.from(
+    layout.projectDirectory.dir("prebuilt"),
+    layout.projectDirectory.dir("../prebuilt"),
+    layout.projectDirectory.dir("../buildscripts/prefix/arm64/lib"),
+    layout.projectDirectory.dir("../buildscripts/build/arm64/openmw-prefix")
+  )
+}
+
+tasks.named("preBuild") {
+  dependsOn(copyPrebuiltNativeLibs)
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
