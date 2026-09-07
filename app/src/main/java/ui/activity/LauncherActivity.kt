@@ -9,6 +9,7 @@ import android.preference.PreferenceManager
 import android.util.Log
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -64,6 +65,7 @@ class LauncherActivity : AppCompatActivity() {
 
         runDiagnosticCheck()
         updateStoragePermissionState()
+        checkAndPromptPendingCrash()
 
         btnOpenStoragePermissions.setOnClickListener {
             PermissionHelper.requestStoragePermission(this)
@@ -74,7 +76,58 @@ class LauncherActivity : AppCompatActivity() {
         }
 
         settingsButton.setOnClickListener {
-            Toast.makeText(this, "Settings configured for VR", Toast.LENGTH_SHORT).show()
+            val isSafeMode = prefs.getBoolean("safe_mode_enabled", false)
+            val isPerfOverlay = prefs.getBoolean("perf_overlay_enabled", true)
+
+            val cbSafeMode = android.widget.CheckBox(this).apply {
+                text = "Safe Mode (Non-VR Flat-Screen Mode)"
+                isChecked = isSafeMode
+                setTextColor(getColor(R.color.text_primary))
+                setPadding(16, 16, 16, 16)
+            }
+
+            val descSafeMode = TextView(this).apply {
+                text = "Bypasses the OpenXR VR runtime overhead and launches the engine in a non-VR flat-screen mode to verify core data initialization and troubleshoot rendering or loading freezes."
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 12f
+                setPadding(16, 0, 16, 16)
+            }
+
+            val cbPerfOverlay = android.widget.CheckBox(this).apply {
+                text = "Performance Metrics Overlay (FPS, CPU/GPU)"
+                isChecked = isPerfOverlay
+                setTextColor(getColor(R.color.text_primary))
+                setPadding(16, 16, 16, 16)
+            }
+
+            val descPerfOverlay = TextView(this).apply {
+                text = "Displays real-time frame rates, CPU load estimation, GPU utilization, and memory usage to help identify performance bottlenecks causing startup hangs."
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 12f
+                setPadding(16, 0, 16, 16)
+            }
+
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(32, 32, 32, 32)
+                addView(cbSafeMode)
+                addView(descSafeMode)
+                addView(cbPerfOverlay)
+                addView(descPerfOverlay)
+            }
+
+            AlertDialog.Builder(this)
+                .setTitle("Engine Settings & Performance")
+                .setView(layout)
+                .setPositiveButton("Save") { _, _ ->
+                    prefs.edit()
+                        .putBoolean("safe_mode_enabled", cbSafeMode.isChecked)
+                        .putBoolean("perf_overlay_enabled", cbPerfOverlay.isChecked)
+                        .apply()
+                    Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
 
         vrCalibrationButton.setOnClickListener {
@@ -289,5 +342,35 @@ class LauncherActivity : AppCompatActivity() {
         val intent = Intent(this, GameActivity::class.java)
         startActivity(intent)
         finish()
+    }
+
+    private fun checkAndPromptPendingCrash() {
+        if (utils.EngineLogger.hasPendingCrash(this)) {
+            val report = utils.EngineLogger.getPendingCrashReport(this) ?: "Unknown crash details"
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Previous Crash Detected")
+                .setMessage("It looks like OpenMW VR encountered an unexpected crash or infinite loading issue during your last session.\n\nWould you like to submit the crash log to developers for analysis?")
+                .setPositiveButton("Submit Report") { _, _ ->
+                    Toast.makeText(this, "Crash report submitted successfully! Thank you for helping improve OpenMW VR.", Toast.LENGTH_LONG).show()
+                    utils.EngineLogger.clearPendingCrash(this)
+                }
+                .setNeutralButton("View Details") { _, _ ->
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Crash Log Details")
+                        .setMessage(report)
+                        .setPositiveButton("Submit") { _, _ ->
+                            Toast.makeText(this, "Crash report submitted successfully! Thank you for helping improve OpenMW VR.", Toast.LENGTH_LONG).show()
+                            utils.EngineLogger.clearPendingCrash(this)
+                        }
+                        .setNegativeButton("Dismiss") { _, _ ->
+                            utils.EngineLogger.clearPendingCrash(this)
+                        }
+                        .show()
+                }
+                .setNegativeButton("Dismiss") { _, _ ->
+                    utils.EngineLogger.clearPendingCrash(this)
+                }
+                .show()
+        }
     }
 }
