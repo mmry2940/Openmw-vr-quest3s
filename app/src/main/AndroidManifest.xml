@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Allow writing to external storage and accessing files on Android 11+ / Quest -->
+
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" android:version="1" />
     <uses-feature android:name="android.software.vr.mode" android:required="false" />
     <uses-feature android:name="android.hardware.vr.high_performance" android:required="false" />
@@ -15,7 +16,6 @@
     <uses-feature android:name="oculus.hardware.passthrough" android:required="false" />
 
     <application
-        android:extractNativeLibs="true"
         android:requestLegacyExternalStorage="true"
         android:name="utils.MyApp"
         android:allowBackup="true"
@@ -25,16 +25,12 @@
         android:label="@string/app_name"
         android:theme="@style/MyTheme"
         tools:ignore="GoogleAppIndexingWarning">
+
         <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s|eureka|panther|monterey|hollywood" />
         <meta-data android:name="com.oculus.supportedInputDevices" android:value="controller|hand_tracking" />
         <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
-        <meta-data android:name="com.oculus.intent.category.VR" android:value="vr_only" />
-        <activity
-            android:name="ui.activity.MainActivity"
-            android:exported="true"
-            android:configChanges="keyboardHidden|orientation|screenSize"
-            android:label="@string/app_name"
-            android:screenOrientation="fullUser" />
+
+        <!-- Main Launcher Activity: Runs in high-res 2D floating panel on Quest so users can configure paths & mods -->
         <activity
             android:name="ui.activity.LauncherActivity"
             android:exported="true"
@@ -46,9 +42,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="com.oculus.intent.category.VR" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="ui.activity.MainActivity"
+            android:exported="true"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:label="@string/app_name"
+            android:screenOrientation="fullUser" />
+
         <activity
             android:name="ui.activity.VrEntryActivity"
             android:exported="true"
@@ -56,6 +59,8 @@
             android:label="@string/app_name"
             android:screenOrientation="fullUser"
             android:theme="@style/MyTheme" />
+
+        <!-- VR Game Engine Activity -->
         <activity
             android:name="ui.activity.GameActivity"
             android:exported="true"
@@ -64,44 +69,35 @@
             android:resizeableActivity="false"
             android:screenOrientation="landscape"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
-            <meta-data android:name="com.oculus.vr.mode" android:value="vr_only" />
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
+                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="com.oculus.intent.category.VR" />
             </intent-filter>
         </activity>
-        <activity
-            android:name="ui.activity.ConfigureControls"
-            android:configChanges="keyboardHidden|orientation"
-            android:screenOrientation="sensorLandscape"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.FullScreen" />
+
         <activity
             android:name="ui.activity.ModsActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:screenOrientation="fullUser"
             android:theme="@style/MyTheme"
             android:exported="true"
-            android:label="@string/activity_mods"
-            />
+            android:label="@string/activity_mods" />
+
         <activity
             android:name="ui.activity.VrCalibrationActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:screenOrientation="fullUser"
             android:theme="@style/MyTheme"
             android:exported="true"
-            android:label="@string/activity_vr_calibration"
-            />
+            android:label="@string/activity_vr_calibration" />
+
         <activity
             android:name="ui.activity.StoragePermissionActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:screenOrientation="fullUser"
             android:theme="@style/MyTheme"
             android:exported="true"
-            android:label="@string/activity_storage_permission"
-            />
+            android:label="@string/activity_storage_permission" />
     </application>
 
 </manifest>

@@ -1,25 +1,16 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Morrowind Deep Dunmer & Golden Daedric Theme -->
-    <color name="colorPrimary">#7A1D20</color>
-    <color name="colorPrimaryDark">#4A0E10</color>
-    <color name="colorAccent">#D4AF37</color>
-
-    <color name="bg_dark">#120D0E</color>
-    <color name="surface_card">#1E1618</color>
-    <color name="surface_card_stroke">#3D2A2E</color>
-    <color name="surface_card_selected">#2A1A1E</color>
-    <color name="gold_accent">#E5C158</color>
-    <color name="gold_accent_glow">#33E5C158</color>
-    <color name="text_primary">#F5EBE6</color>
-    <color name="text_secondary">#B3A2A4</color>
-    <color name="text_hint">#756668</color>
-
+    <color name="primary">#1E222A</color>
+    <color name="primary_dark">#121418</color>
+    <color name="accent">#C59B27</color>
+    <color name="gold_accent">#D4AF37</color>
+    <color name="background_dark">#12151B</color>
+    <color name="card_background">#1C2029</color>
+    <color name="card_stroke">#2F3644</color>
+    <color name="text_primary">#F0F2F5</color>
+    <color name="text_secondary">#9DA7B8</color>
     <color name="status_ready">#4CAF50</color>
     <color name="status_warning">#FF9800</color>
     <color name="status_error">#F44336</color>
-
-    <color name="btn_launch_start">#9E2A2B</color>
-    <color name="btn_launch_end">#5E1315</color>
-    <color name="btn_action_surface">#261D20</color>
+    <color name="alert_bg">#2D1B1B</color>
+    <color name="alert_stroke">#662222</color>
 </resources>

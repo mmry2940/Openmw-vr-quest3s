@@ -1,81 +1,38 @@
 package ui.activity
 
-import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import com.libopenmw.openmw.R
 import permission.PermissionHelper
-import ui.fragments.StoragePermissionFragment
 
 class StoragePermissionActivity : AppCompatActivity() {
-
-    private lateinit var permissionFragment: StoragePermissionFragment
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_fragment_container)
 
-        val autoContinue = intent.getBooleanExtra(EXTRA_AUTO_CONTINUE, false)
-        if (autoContinue && PermissionHelper.hasStoragePermission(this)) {
-            Log.d(TAG, "Storage permission already granted, continuing")
-            finishWithSuccess()
-            return
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
         }
 
-        if (savedInstanceState == null) {
-            permissionFragment = StoragePermissionFragment.newInstance()
-            permissionFragment.setOnPermissionGrantedListener {
-                finishWithSuccess()
-            }
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.fragment_container, permissionFragment)
-                .commit()
-        } else {
-            val existing = supportFragmentManager.findFragmentById(R.id.fragment_container)
-            if (existing is StoragePermissionFragment) {
-                permissionFragment = existing
-                permissionFragment.setOnPermissionGrantedListener {
-                    finishWithSuccess()
-                }
-            } else {
-                permissionFragment = StoragePermissionFragment.newInstance()
+        val tv = TextView(this).apply {
+            setText("Storage Permission is needed to read Morrowind game files.")
+            textSize = 16f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(0, 0, 0, 24)
+        }
+
+        val btn = Button(this).apply {
+            setText("Grant Permission")
+            setOnClickListener {
+                PermissionHelper.requestStoragePermission(this@StoragePermissionActivity)
+                finish()
             }
         }
-    }
 
-    override fun onResume() {
-        super.onResume()
-        if (::permissionFragment.isInitialized) {
-            permissionFragment.updatePermissionsUI()
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (::permissionFragment.isInitialized) {
-            permissionFragment.updatePermissionsUI()
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (::permissionFragment.isInitialized) {
-            permissionFragment.updatePermissionsUI()
-        }
-    }
-
-    private fun finishWithSuccess() {
-        setResult(RESULT_OK)
-        finish()
-    }
-
-    companion object {
-        private const val TAG = "StoragePermActivity"
-        const val EXTRA_AUTO_CONTINUE = "extra_auto_continue"
+        layout.addView(tv)
+        layout.addView(btn)
+        setContentView(layout)
     }
 }
