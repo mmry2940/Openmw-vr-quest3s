@@ -81,6 +81,11 @@ class LauncherActivity : AppCompatActivity() {
             startActivity(Intent(this, VrCalibrationActivity::class.java))
         }
 
+        val btnViewEngineLogs = findViewById<Button>(R.id.btn_view_engine_logs)
+        btnViewEngineLogs.setOnClickListener {
+            ui.dialog.EngineLogDialog(this).show()
+        }
+
         btnDiagnoseData.setOnClickListener {
             val result = DataFilesDiagnostic.check(this)
             lastDiagnosticResult = result

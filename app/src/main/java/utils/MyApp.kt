@@ -18,6 +18,7 @@ class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        Log.d(TAG, "MyApp initialized")
+        EngineLogger.init(this)
+        EngineLogger.i(TAG, "MyApp initialized and EngineLogger active.")
     }
 }

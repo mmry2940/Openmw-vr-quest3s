@@ -291,6 +291,16 @@
                 android:layout_marginStart="4dp" />
         </LinearLayout>
 
+        <!-- View Engine Logs Button -->
+        <Button
+            android:id="@+id/btn_view_engine_logs"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="View Engine Logs &amp; Startup Trace"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:textColor="@color/gold_accent"
+            android:layout_marginBottom="8dp" />
+
         <TextView
             android:id="@+id/status_message"
             android:layout_width="wrap_content"
