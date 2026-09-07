@@ -7,10 +7,14 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
-    <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" />
+    <uses-feature android:name="android.hardware.vr.headtracking" android:required="false" android:version="1" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+    <uses-feature android:name="oculus.hardware.passthrough" android:required="false" />
 
     <application
+        android:extractNativeLibs="true"
         android:requestLegacyExternalStorage="true"
         android:name="utils.MyApp"
         android:allowBackup="true"
@@ -22,6 +26,8 @@
         tools:ignore="GoogleAppIndexingWarning">
         <meta-data android:name="com.oculus.supportedDevices" android:value="quest|quest2|questpro|quest3|quest3s" />
         <meta-data android:name="com.oculus.supportedInputDevices" android:value="controller|hand_tracking" />
+        <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
+        <meta-data android:name="com.oculus.intent.category.VR" android:value="vr_only" />
         <activity
             android:name="ui.activity.MainActivity"
             android:exported="true"
@@ -70,6 +76,7 @@
             android:name="ui.activity.ConfigureControls"
             android:configChanges="keyboardHidden|orientation"
             android:screenOrientation="sensorLandscape"
+            android:exported="false"
             android:theme="@style/Theme.AppCompat.FullScreen" />
         <activity
             android:name="ui.activity.ModsActivity"
