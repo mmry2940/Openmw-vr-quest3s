@@ -110,11 +110,20 @@ class GameActivity : SDLActivity() {
     public override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ensureNativeLibrariesLoaded()
-        configureQuestOpenXrRuntime()
-        initOpenXRLoader()
+        try {
+            configureQuestOpenXrRuntime()
+            initOpenXRLoader()
+        } catch (t: Throwable) {
+            Log.w("OpenMW", "OpenXR runtime initialization notice: ${t.message}")
+        }
         KeepScreenOn()
         window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        getPathToJni(filesDir.parent, Constants.USER_FILE_STORAGE)
+        try {
+            val globalPath = filesDir.parent ?: filesDir.absolutePath
+            getPathToJni(globalPath, Constants.USER_FILE_STORAGE)
+        } catch (t: Throwable) {
+            Log.e("OpenMW", "getPathToJni error: ${t.message}", t)
+        }
         showControls()
         enforceImmersiveMode()
     }
