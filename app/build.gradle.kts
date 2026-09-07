@@ -11,7 +11,7 @@ android {
     applicationId = "com.openmw.vr"
     minSdk = 24
     targetSdk = 34
-    versionCode = 45
+    versionCode = 46
     versionName = "1.0"
 
     ndk {
@@ -28,6 +28,8 @@ android {
       storePassword = System.getenv("STORE_PASSWORD")
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
+      enableV1Signing = true
+      enableV2Signing = true
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
