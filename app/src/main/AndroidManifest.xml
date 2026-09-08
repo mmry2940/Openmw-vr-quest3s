@@ -68,7 +68,7 @@
             android:launchMode="singleTask"
             android:resizeableActivity="false"
             android:screenOrientation="landscape"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+            android:theme="@style/Theme.AppCompat.FullScreen">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

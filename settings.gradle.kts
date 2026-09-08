@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "OpenMW VR"
+rootProject.name = "OpenMW VR Debug"
 include(":app")

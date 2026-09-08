@@ -13,6 +13,7 @@ object EngineLogger {
     private val listeners = mutableListOf<(LogEntry) -> Unit>()
     private var isInitialized = false
     private var appContext: Context? = null
+    private var logcatThread: Thread? = null
 
     data class LogEntry(
         val timestamp: String,
@@ -25,6 +26,8 @@ object EngineLogger {
         if (isInitialized) return
         isInitialized = true
         appContext = context.applicationContext
+
+        startLogcatStream()
 
         // Capture uncaught exceptions to diagnose crashes or infinite loading hangs
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -51,6 +54,29 @@ object EngineLogger {
             defaultHandler?.uncaughtException(thread, throwable)
         }
         i(TAG, "EngineLogger initialized. Tracking initialization and native startup flow.")
+    }
+
+    private fun startLogcatStream() {
+        if (logcatThread != null) return
+        logcatThread = Thread({
+            try {
+                val process = Runtime.getRuntime().exec("logcat -v time")
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+                var line: String? = reader.readLine()
+                while (line != null && !Thread.currentThread().isInterrupted) {
+                    if (line.contains("OpenMW") || line.contains("SDL") || line.contains("OpenXR") || 
+                        line.contains("DEBUG") || line.contains("AndroidRuntime") || line.contains("fatal") || 
+                        line.contains("crash") || line.contains("libc") || line.contains("GameActivity")) {
+                        log("N", "NativeLogcat", line)
+                    }
+                    line = reader.readLine()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Logcat streaming error", e)
+            }
+        }, "LogcatStreamThread")
+        logcatThread?.isDaemon = true
+        logcatThread?.start()
     }
 
     fun hasPendingCrash(context: Context): Boolean {

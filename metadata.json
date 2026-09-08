@@ -1,5 +1,5 @@
 {
-  "name": "OpenMW VR",
+  "name": "OpenMW VR Debug",
   "description": "OpenMW VR launcher and engine for Meta Quest headsets",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

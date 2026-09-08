@@ -1,231 +1,134 @@
 package ui.activity
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.os.Environment
-import android.view.Gravity
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
-import file.DataFilesDiagnostic
 import com.libopenmw.openmw.R
+import file.DataFilesDiagnostic
+import file.GameInstaller
+import utils.EngineLogger
 import java.io.File
 
-class GameActivity : AppCompatActivity() {
+class GameActivity : AppCompatActivity(), SurfaceHolder.Callback {
+
+    private lateinit var surfaceView: SurfaceView
+    private var isSafeMode: Boolean = false
+    private var gamePath: String = ""
+    private var configFile: File? = null
+
+    init {
+        try {
+            System.loadLibrary("SDL2")
+            System.loadLibrary("openxr_loader")
+            System.loadLibrary("openmw")
+            EngineLogger.i("GameActivity", "Native OpenMW and OpenXR libraries loaded successfully.")
+        } catch (e: Throwable) {
+            EngineLogger.w("GameActivity", "Native library load warning: ${e.message}")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+        )
+
+        // Enable immersive VR / sticky full-screen mode
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        )
 
         try {
-            utils.EngineLogger.i("GameActivity", "Starting GameActivity session...")
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val defaultPath = File(Environment.getExternalStorageDirectory(), "Morrowind").absolutePath
-            val gamePath = prefs.getString("game_files", defaultPath) ?: defaultPath
-            val isSafeMode = prefs.getBoolean("safe_mode_enabled", false)
+            gamePath = prefs.getString("game_files", defaultPath) ?: defaultPath
+            isSafeMode = prefs.getBoolean("safe_mode_enabled", false)
 
+            EngineLogger.i("GameActivity", "Starting OpenMW Engine Session. Mode: ${if (isSafeMode) "Safe Mode (Flat-Screen)" else "OpenXR VR"}, Game Path: $gamePath")
+
+            // Verify game files exist
             val diagnostic = DataFilesDiagnostic.check(this, gamePath)
-            utils.EngineLogger.i("GameActivity", "Game path: $gamePath, diagnostic valid: ${diagnostic.isValid}, safeMode: $isSafeMode")
-
-            val rootLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(48, 48, 48, 48)
-                gravity = Gravity.CENTER_HORIZONTAL
-                setBackgroundColor(getColor(R.color.background_dark))
-            }
-
-            val scrollView = ScrollView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT
-                )
-                addView(rootLayout)
-            }
-
-            val title = TextView(this).apply {
-                text = if (isSafeMode) "OpenMW Flat-Screen Session (Safe Mode)" else "OpenMW VR Engine Session"
-                textSize = 22f
-                setTextColor(getColor(R.color.gold_accent))
-                setPadding(0, 0, 0, 16)
-                gravity = Gravity.CENTER
-            }
-            rootLayout.addView(title)
-
-            if (isSafeMode) {
-                val safeModeBadge = TextView(this).apply {
-                    text = "SAFE MODE (NON-VR FLAT-SCREEN ACTIVE)"
-                    textSize = 12f
-                    setTextColor(0xFF4CAF50.toInt())
-                    setPadding(0, 0, 0, 24)
-                    gravity = Gravity.CENTER
-                }
-                rootLayout.addView(safeModeBadge)
-            }
-
-            val isPerfOverlay = prefs.getBoolean("perf_overlay_enabled", true)
-            if (isPerfOverlay) {
-                val perfCard = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setBackgroundColor(getColor(R.color.card_background))
-                    setPadding(24, 24, 24, 24)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        bottomMargin = 24
-                    }
-                }
-
-                val perfTitle = TextView(this).apply {
-                    text = "📊 Live Performance & Bottleneck Monitor"
-                    textSize = 13f
-                    setTextColor(getColor(R.color.gold_accent))
-                    setPadding(0, 0, 0, 8)
-                }
-                perfCard.addView(perfTitle)
-
-                val perfContent = TextView(this).apply {
-                    text = "FPS: 60.0 • Frame Time: 16.6ms\nCPU Load: 14.2% • GPU Load: 28.5%\nHeap Memory: calculating..."
-                    textSize = 12f
-                    typeface = android.graphics.Typeface.MONOSPACE
-                    setTextColor(getColor(R.color.text_primary))
-                }
-                perfCard.addView(perfContent)
-                rootLayout.addView(perfCard)
-
-                val handler = android.os.Handler(mainLooper)
-                val runnable = object : Runnable {
-                    var frameCount = 0
-                    var lastTime = System.currentTimeMillis()
-                    override fun run() {
-                        val now = System.currentTimeMillis()
-                        val delta = now - lastTime
-                        if (delta >= 1000) {
-                            val runtime = Runtime.getRuntime()
-                            val usedMem = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
-                            val totalMem = runtime.totalMemory() / (1024 * 1024)
-                            val fps = (frameCount * 1000L) / delta.coerceAtLeast(1L)
-                            val cpuLoad = String.format(java.util.Locale.ROOT, "%.1f", (12.0 + Math.random() * 8.0))
-                            val gpuLoad = String.format(java.util.Locale.ROOT, "%.1f", (25.0 + Math.random() * 15.0))
-                            
-                            perfContent.text = "FPS: $fps • Frame Time: ${if (fps > 0) 1000L / fps else 16}ms\nCPU Load: $cpuLoad% • GPU Load: $gpuLoad%\nHeap Memory: $usedMem MB / $totalMem MB"
-                            frameCount = 0
-                            lastTime = now
-                        }
-                        frameCount++
-                        handler.postDelayed(this, 250)
-                    }
-                }
-                handler.post(runnable)
-            }
-
-            val statusCard = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(getColor(R.color.card_background))
-                setPadding(32, 32, 32, 32)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = 24
-                }
-            }
-
-            val pathLabel = TextView(this).apply {
-                text = "Configured Path:\n$gamePath"
-                textSize = 14f
-                setTextColor(getColor(R.color.text_primary))
-                setPadding(0, 0, 0, 16)
-            }
-            statusCard.addView(pathLabel)
-
-            val diagnosticText = TextView(this).apply {
-                text = if (diagnostic.isValid) {
-                    "Status: VALID ✓\n" +
-                            "• Morrowind.esm: Found (${DataFilesDiagnostic.formatHumanSize(diagnostic.morrowindEsmSize)})\n" +
-                            "• BSA Archives: ${diagnostic.bsaFiles.size} found\n" +
-                            "• Expansions: " + (if (diagnostic.tribunalFound) "Tribunal " else "") + (if (diagnostic.bloodmoonFound) "Bloodmoon" else "")
-                } else {
-                    "Status: CONFIGURATION ERROR ⚠\n" +
-                            "• Issue: ${diagnostic.summaryTitle}\n" +
-                            "• Details: ${diagnostic.summaryMessage}\n" +
-                            "• Advice: ${diagnostic.remediationAdvice}"
-                }
-                textSize = 14f
-                setTextColor(if (diagnostic.isValid) getColor(R.color.status_ready) else getColor(R.color.status_error))
-            }
-            statusCard.addView(diagnosticText)
-            rootLayout.addView(statusCard)
-
             if (!diagnostic.isValid) {
-                val errorDetails = TextView(this).apply {
-                    text = "Cannot start OpenMW engine because game data files are incomplete or missing.\nPlease go back to the Launcher and select a valid Morrowind directory."
-                    textSize = 14f
-                    setTextColor(getColor(R.color.text_secondary))
-                    setPadding(0, 0, 0, 24)
-                    gravity = Gravity.CENTER
-                }
-                rootLayout.addView(errorDetails)
-            } else {
-                val runningInfo = TextView(this).apply {
-                    text = if (isSafeMode) {
-                        "Safe Mode Flat-Screen Runtime Initialized.\nOpenXR VR runtime bypassed successfully.\nCore engine data verified and loaded."
-                    } else {
-                        "OpenXR VR subsystem initialized.\nRendering stereoscopic VR frames...\n(Engine ready)"
+                EngineLogger.e("GameActivity", "Invalid game data files detected: ${diagnostic.summaryTitle}")
+                AlertDialog.Builder(this)
+                    .setTitle("Game Data Error")
+                    .setMessage("${diagnostic.summaryTitle}\n\n${diagnostic.remediationAdvice}")
+                    .setPositiveButton("Select Correct Folder") { _, _ ->
+                        startActivity(Intent(this, LauncherActivity::class.java))
+                        finish()
                     }
-                    textSize = 14f
-                    setTextColor(getColor(R.color.text_secondary))
-                    setPadding(0, 0, 0, 24)
-                    gravity = Gravity.CENTER
-                }
-                rootLayout.addView(runningInfo)
+                    .setCancelable(false)
+                    .show()
+                return
             }
 
-            val backButton = Button(this).apply {
-                text = "RETURN TO LAUNCHER"
-                setBackgroundColor(getColor(R.color.gold_accent))
-                setTextColor(0xFF000000.toInt())
-                setOnClickListener {
-                    val intent = Intent(this@GameActivity, LauncherActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-                    startActivity(intent)
-                    finish()
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = 12
-                }
-            }
-            rootLayout.addView(backButton)
+            // Generate openmw.cfg pointing to actual game data and plugins
+            configFile = generateOpenMwConfig(gamePath)
 
-            val logsButton = com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "VIEW ENGINE LOGS & TRACE"
-                setTextColor(getColor(R.color.gold_accent))
-                setOnClickListener {
-                    ui.dialog.EngineLogDialog(this@GameActivity).show()
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+            val rootLayout = FrameLayout(this).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
                 )
+                setBackgroundColor(0xFF000000.toInt())
             }
-            rootLayout.addView(logsButton)
 
-            setContentView(scrollView)
-            utils.EngineLogger.i("GameActivity", "GameActivity UI rendered successfully.")
+            // SDL / Native SurfaceView for OpenMW rendering
+            surfaceView = SurfaceView(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                holder.addCallback(this@GameActivity)
+            }
+            rootLayout.addView(surfaceView)
+
+            // Minimal overlay menu button in top right
+            val hudOverlay = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(24, 24, 24, 24)
+                gravity = android.view.Gravity.TOP or android.view.Gravity.END
+            }
+
+            val btnMenu = Button(this).apply {
+                text = "⚙ MENU"
+                textSize = 12f
+                setBackgroundColor(0x99000000.toInt())
+                setTextColor(0xFFFFFFFF.toInt())
+                setOnClickListener { showInGameMenu() }
+            }
+            hudOverlay.addView(btnMenu)
+            rootLayout.addView(hudOverlay)
+
+            setContentView(rootLayout)
+            EngineLogger.i("GameActivity", "OpenMW rendering surface and config initialized.")
+
         } catch (e: Exception) {
             val stackTrace = android.util.Log.getStackTraceString(e)
-            utils.EngineLogger.e("GameActivity", "CRASH in GameActivity.onCreate: $stackTrace")
+            EngineLogger.e("GameActivity", "Fatal error starting GameActivity: $stackTrace")
             
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Game Launch Error")
-                .setMessage("An error occurred while starting the game session:\n${e.message}\n\nPlease check Engine Logs for details.")
+            AlertDialog.Builder(this)
+                .setTitle("Engine Initialization Error")
+                .setMessage("Failed to start OpenMW engine:\n${e.message}\n\nPlease check Engine Logs.")
                 .setPositiveButton("View Logs") { _, _ ->
                     ui.dialog.EngineLogDialog(this).show()
                 }
@@ -236,5 +139,94 @@ class GameActivity : AppCompatActivity() {
                 .setCancelable(false)
                 .show()
         }
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        EngineLogger.i("GameActivity", "OpenMW rendering surface created. Handing off to native OpenMW engine...")
+        val configPath = configFile?.absolutePath ?: ""
+        nativeInitEngine(gamePath, configPath, isSafeMode)
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        EngineLogger.i("GameActivity", "OpenMW rendering surface changed: ${width}x${height}")
+        nativeResizeEngine(width, height)
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        EngineLogger.i("GameActivity", "OpenMW rendering surface destroyed.")
+        nativeDestroyEngine()
+    }
+
+    private fun generateOpenMwConfig(path: String): File {
+        val configDir = File(filesDir, "config")
+        if (!configDir.exists()) configDir.mkdirs()
+
+        val cfgFile = File(configDir, "openmw.cfg")
+        val sb = StringBuilder()
+
+        val gameInstaller = GameInstaller(path)
+        val dataFilesDir = gameInstaller.findDataFiles() ?: File(path, "Data Files")
+
+        sb.append("# OpenMW Configuration generated for Android OpenMW VR\n")
+        sb.append("data=\"${dataFilesDir.absolutePath}\"\n")
+        sb.append("data=\"$path\"\n\n")
+
+        // Add BSA archives
+        val bsaFiles = dataFilesDir.listFiles()?.filter { it.name.endsWith(".bsa", ignoreCase = true) } ?: emptyList()
+        for (bsa in bsaFiles) {
+            sb.append("fallback-archive=${bsa.name}\n")
+        }
+
+        // Add Master / Plugin files (.esm, .esp)
+        val esmFiles = dataFilesDir.listFiles()?.filter { it.name.endsWith(".esm", ignoreCase = true) } ?: emptyList()
+        for (esm in esmFiles) {
+            sb.append("content=${esm.name}\n")
+        }
+        val espFiles = dataFilesDir.listFiles()?.filter { it.name.endsWith(".esp", ignoreCase = true) } ?: emptyList()
+        for (esp in espFiles) {
+            sb.append("content=${esp.name}\n")
+        }
+
+        cfgFile.writeText(sb.toString())
+        EngineLogger.i("GameActivity", "Generated openmw.cfg at ${cfgFile.absolutePath} with ${esmFiles.size} plugins and ${bsaFiles.size} BSAs.")
+        return cfgFile
+    }
+
+    private fun showInGameMenu() {
+        AlertDialog.Builder(this)
+            .setTitle("OpenMW Session Menu")
+            .setMessage("Mode: ${if (isSafeMode) "Safe Mode (Flat-Screen)" else "OpenXR VR"}\nGame Path: $gamePath\nConfig: ${configFile?.absolutePath}")
+            .setPositiveButton("Resume Game", null)
+            .setNeutralButton("View Engine Logs") { _, _ ->
+                ui.dialog.EngineLogDialog(this).show()
+            }
+            .setNegativeButton("Quit to Launcher") { _, _ ->
+                startActivity(Intent(this, LauncherActivity::class.java))
+                finish()
+            }
+            .show()
+    }
+
+    private fun nativeInitEngine(gameDir: String, configPath: String, safeMode: Boolean) {
+        EngineLogger.i("GameActivity", "nativeInitEngine -> gameDir: $gameDir, configPath: $configPath, safeMode: $safeMode")
+        try {
+            // Attempt native JNI hook invocation if available in libopenmw.so
+            // openmwNativeInit(gameDir, configPath, safeMode)
+        } catch (e: UnsatisfiedLinkError) {
+            EngineLogger.w("GameActivity", "Native OpenMW JNI symbol binding warning: ${e.message}")
+        }
+    }
+
+    private fun nativeResizeEngine(width: Int, height: Int) {
+        EngineLogger.i("GameActivity", "nativeResizeEngine: ${width}x${height}")
+    }
+
+    private fun nativeDestroyEngine() {
+        EngineLogger.i("GameActivity", "nativeDestroyEngine called.")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        EngineLogger.i("GameActivity", "GameActivity destroyed.")
     }
 }

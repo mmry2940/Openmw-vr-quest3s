@@ -70,6 +70,7 @@ class EngineLogDialog(private val context: Context) {
                     "E" -> "[ERROR]"
                     "W" -> "[WARN]"
                     "I" -> "[INFO]"
+                    "N" -> "[NATIVE]"
                     else -> "[DEBUG]"
                 }
                 sb.append("${entry.timestamp} $prefix ${entry.tag}: ${entry.message}\n")

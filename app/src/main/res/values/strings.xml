@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">OpenMW VR</string>
+    <string name="app_name">OpenMW VR Debug</string>
     <string name="title_activity_main">OpenMW VR</string>
     <string name="activity_mods">Mods &amp; Load Order</string>
     <string name="activity_vr_calibration">VR Calibration</string>
