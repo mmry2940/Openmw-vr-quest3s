@@ -1,27 +1,55 @@
 package ui.activity
 
 import android.content.Intent
-import android.os.Bundle
 import android.util.Log
-import androidx.appcompat.app.AppCompatActivity
-import utils.RuntimeValidator
 
-private const val TAG = "VrEntryActivity"
+class VrEntryActivity : MainActivity() {
+    private var autoStartHandled = false
 
-class VrEntryActivity : AppCompatActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        handleEntryIntent(intent, "onCreate")
+    }
 
-        if (!RuntimeValidator.hasValidDataFiles(this)) {
-            Log.e(TAG, "VrEntryActivity: game data files missing/invalid, redirecting to LauncherActivity")
-            val launcherIntent = Intent(this, LauncherActivity::class.java)
-            startActivity(launcherIntent)
-            finish()
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleEntryIntent(intent, "onNewIntent")
+    }
+
+    private fun handleEntryIntent(intent: Intent?, source: String) {
+        val autoStart = intent?.getBooleanExtra(EXTRA_AUTO_START_GAME, false) == true
+        Log.d(TAG, "VrEntryActivity.$source: autoStart=$autoStart, handled=$autoStartHandled")
+
+        if (autoStart) {
+            if (autoStartHandled) {
+                Log.d(TAG, "VrEntryActivity.$source: auto-start already handled, ignoring")
+                return
+            }
+
+            if (!utils.RuntimeValidator.isRuntimePayloadValid(this)) {
+                Log.e(TAG, "VrEntryActivity.$source: runtime payload missing, redirecting to LauncherActivity")
+                val launcherIntent = Intent(this, LauncherActivity::class.java)
+                startActivity(launcherIntent)
+                finish()
+                return
+            }
+
+            autoStartHandled = true
+            Log.d(TAG, "VrEntryActivity.$source: auto-starting via MainActivity pipeline")
+            checkStartGame()
             return
         }
 
-        val gameIntent = Intent(this, GameActivity::class.java)
-        startActivity(gameIntent)
+        Log.d(TAG, "VrEntryActivity.$source: launching LauncherActivity")
+        val launcherIntent = Intent(this, LauncherActivity::class.java)
+        startActivity(launcherIntent)
         finish()
     }
+
+    companion object {
+        private const val TAG = "VrEntryActivity"
+        const val EXTRA_AUTO_START_GAME = "ui.activity.extra.AUTO_START_GAME"
+    }
 }
+

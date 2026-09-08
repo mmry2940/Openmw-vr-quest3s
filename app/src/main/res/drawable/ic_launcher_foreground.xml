@@ -1,9 +1,8 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#D4AF37"
-        android:pathData="M54,24L30,78h12l4,-10h16l4,10h12L54,24zM48,60l6,-16l6,16H48z"/>
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="72dp"
+        android:height="72dp"
+        android:drawable="@drawable/ic_morrowind_emblem"
+        android:gravity="center" />
+</layer-list>

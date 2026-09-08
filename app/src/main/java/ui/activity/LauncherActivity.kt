@@ -1,74 +1,73 @@
+/*
+    OpenMW VR Quest - Simple Launcher Activity
+    Displays a simple button-based UI for configuring game data and launching the game
+*/
+
 package ui.activity
 
 import android.app.AlertDialog
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.os.Environment
 import android.preference.PreferenceManager
 import android.util.Log
 import android.widget.Button
-import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+
+import com.codekidlabs.storagechooser.StorageChooser
 import com.libopenmw.openmw.R
-import file.DataFilesDiagnostic
 import file.GameInstaller
 import permission.PermissionHelper
-import java.io.File
 
 private const val TAG = "LauncherActivity"
 
 class LauncherActivity : AppCompatActivity() {
-
     private lateinit var prefs: SharedPreferences
     private lateinit var selectDataButton: Button
-    private lateinit var btnDiagnoseData: Button
     private lateinit var launchGameButton: Button
     private lateinit var manageModsButton: Button
     private lateinit var settingsButton: Button
     private lateinit var vrCalibrationButton: Button
+    private lateinit var storageButton: Button
     private lateinit var cardStorageWarning: android.view.View
     private lateinit var btnOpenStoragePermissions: Button
-
-    private lateinit var cardDataDiagnosticAlert: android.view.View
-    private lateinit var diagnosticAlertTitle: TextView
-    private lateinit var diagnosticAlertMessage: TextView
-    private lateinit var btnFixGameData: Button
-    private lateinit var btnViewDiagnosticReport: Button
-
     private var launchInProgress: Boolean = false
-    private var lastDiagnosticResult: DataFilesDiagnostic.DiagnosticResult? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d(TAG, "LauncherActivity.onCreate: starting")
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.main)
-
+        
+        PermissionHelper.getWriteExternalStoragePermission(this)
+        setContentView(R.layout.launcher)
+        Log.d(TAG, "LauncherActivity: set launcher layout")
+        
         prefs = PreferenceManager.getDefaultSharedPreferences(this)
 
+        // Update displayed game data path and VR calibration
+        updateGameDataDisplay()
+        updateVrCalibrationDisplay()
+
+        // Set up button listeners
         selectDataButton = findViewById(R.id.select_data_button)
-        btnDiagnoseData = findViewById(R.id.btn_diagnose_data)
         launchGameButton = findViewById(R.id.launch_game_button)
         manageModsButton = findViewById(R.id.manage_mods_button)
         settingsButton = findViewById(R.id.settings_button)
-        vrCalibrationButton = findViewById(R.id.vr_calibration_button)
+        storageButton = findViewById(R.id.storage_button)
+        vrCalibrationButton = findViewById(R.id.btn_vr_calibration)
         cardStorageWarning = findViewById(R.id.card_storage_warning)
         btnOpenStoragePermissions = findViewById(R.id.btn_open_storage_permissions)
 
-        cardDataDiagnosticAlert = findViewById(R.id.card_data_diagnostic_alert)
-        diagnosticAlertTitle = findViewById(R.id.diagnostic_alert_title)
-        diagnosticAlertMessage = findViewById(R.id.diagnostic_alert_message)
-        btnFixGameData = findViewById(R.id.btn_fix_game_data)
-        btnViewDiagnosticReport = findViewById(R.id.btn_view_diagnostic_report)
-
-        runDiagnosticCheck()
         updateStoragePermissionState()
-        checkAndPromptPendingCrash()
 
         btnOpenStoragePermissions.setOnClickListener {
-            PermissionHelper.requestStoragePermission(this)
+            startActivity(Intent(this, StoragePermissionActivity::class.java))
+        }
+
+        storageButton.setOnClickListener {
+            startActivity(Intent(this, StoragePermissionActivity::class.java))
         }
 
         manageModsButton.setOnClickListener {
@@ -76,118 +75,60 @@ class LauncherActivity : AppCompatActivity() {
         }
 
         settingsButton.setOnClickListener {
-            val isSafeMode = prefs.getBoolean("safe_mode_enabled", false)
-            val isPerfOverlay = prefs.getBoolean("perf_overlay_enabled", true)
-
-            val cbSafeMode = android.widget.CheckBox(this).apply {
-                text = "Safe Mode (Non-VR Flat-Screen Mode)"
-                isChecked = isSafeMode
-                setTextColor(getColor(R.color.text_primary))
-                setPadding(16, 16, 16, 16)
-            }
-
-            val descSafeMode = TextView(this).apply {
-                text = "Bypasses the OpenXR VR runtime overhead and launches the engine in a non-VR flat-screen mode to verify core data initialization and troubleshoot rendering or loading freezes."
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 12f
-                setPadding(16, 0, 16, 16)
-            }
-
-            val cbPerfOverlay = android.widget.CheckBox(this).apply {
-                text = "Performance Metrics Overlay (FPS, CPU/GPU)"
-                isChecked = isPerfOverlay
-                setTextColor(getColor(R.color.text_primary))
-                setPadding(16, 16, 16, 16)
-            }
-
-            val descPerfOverlay = TextView(this).apply {
-                text = "Displays real-time frame rates, CPU load estimation, GPU utilization, and memory usage to help identify performance bottlenecks causing startup hangs."
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 12f
-                setPadding(16, 0, 16, 16)
-            }
-
-            val layout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(32, 32, 32, 32)
-                addView(cbSafeMode)
-                addView(descSafeMode)
-                addView(cbPerfOverlay)
-                addView(descPerfOverlay)
-            }
-
-            AlertDialog.Builder(this)
-                .setTitle("Engine Settings & Performance")
-                .setView(layout)
-                .setPositiveButton("Save") { _, _ ->
-                    prefs.edit()
-                        .putBoolean("safe_mode_enabled", cbSafeMode.isChecked)
-                        .putBoolean("perf_overlay_enabled", cbPerfOverlay.isChecked)
-                        .apply()
-                    Toast.makeText(this, "Settings saved successfully", Toast.LENGTH_SHORT).show()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+            startActivity(Intent(this, MainActivity::class.java))
         }
 
         vrCalibrationButton.setOnClickListener {
             startActivity(Intent(this, VrCalibrationActivity::class.java))
         }
 
-        val btnViewEngineLogs = findViewById<Button>(R.id.btn_view_engine_logs)
-        btnViewEngineLogs.setOnClickListener {
-            ui.dialog.EngineLogDialog(this).show()
-        }
-
-        btnDiagnoseData.setOnClickListener {
-            val result = DataFilesDiagnostic.check(this)
-            lastDiagnosticResult = result
-            DataFilesDiagnostic.showDiagnosticDialog(this, result) {
-                selectGameData()
-            }
-        }
-
-        btnFixGameData.setOnClickListener {
-            selectGameData()
-        }
-
-        btnViewDiagnosticReport.setOnClickListener {
-            val result = lastDiagnosticResult ?: DataFilesDiagnostic.check(this)
-            DataFilesDiagnostic.showDiagnosticDialog(this, result) {
-                selectGameData()
-            }
+        findViewById<android.view.View>(R.id.card_vr_calibration).setOnClickListener {
+            startActivity(Intent(this, VrCalibrationActivity::class.java))
         }
 
         selectDataButton.setOnClickListener {
-            if (!launchInProgress) {
-                selectGameData()
+            if (launchInProgress) {
+                Log.d(TAG, "Select data ignored: launch already in progress")
+                return@setOnClickListener
             }
+            if (!PermissionHelper.hasStoragePermission(this)) {
+                Toast.makeText(this, "Storage permission required to browse and load game files", Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, StoragePermissionActivity::class.java))
+                return@setOnClickListener
+            }
+            Log.d(TAG, "Select data button clicked")
+            selectGameData()
+        }
+        
+        launchGameButton.setOnClickListener {
+            if (launchInProgress) {
+                Log.d(TAG, "Launch game ignored: launch already in progress")
+                return@setOnClickListener
+            }
+            if (!PermissionHelper.hasStoragePermission(this)) {
+                Toast.makeText(this, "Storage permission required to locate and launch Morrowind VR", Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, StoragePermissionActivity::class.java))
+                return@setOnClickListener
+            }
+            launchInProgress = true
+            launchGameButton.isEnabled = false
+            selectDataButton.isEnabled = false
+            manageModsButton.isEnabled = false
+            settingsButton.isEnabled = false
+            storageButton.isEnabled = false
+            vrCalibrationButton.isEnabled = false
+            Log.d(TAG, "Launch game button clicked")
+            checkStartGame()
         }
 
-        launchGameButton.setOnClickListener {
-            if (!launchInProgress) {
-                launchInProgress = true
-                setControlsEnabled(false)
-                checkStartGame()
-            }
-        }
+        Log.d(TAG, "LauncherActivity.onCreate: completed successfully")
     }
 
     override fun onResume() {
         super.onResume()
-        runDiagnosticCheck()
+        updateGameDataDisplay()
+        updateVrCalibrationDisplay()
         updateStoragePermissionState()
-        setControlsEnabled(true)
-        launchInProgress = false
-    }
-
-    private fun setControlsEnabled(enabled: Boolean) {
-        launchGameButton.isEnabled = enabled
-        selectDataButton.isEnabled = enabled
-        btnDiagnoseData.isEnabled = enabled
-        manageModsButton.isEnabled = enabled
-        settingsButton.isEnabled = enabled
-        vrCalibrationButton.isEnabled = enabled
     }
 
     private fun updateStoragePermissionState() {
@@ -195,182 +136,202 @@ class LauncherActivity : AppCompatActivity() {
         cardStorageWarning.visibility = if (hasPermission) android.view.View.GONE else android.view.View.VISIBLE
     }
 
-    private fun runDiagnosticCheck() {
-        val result = DataFilesDiagnostic.check(this)
-        lastDiagnosticResult = result
+    private fun updateVrCalibrationDisplay() {
+        val heightCm = try {
+            prefs.getFloat("pref_vr_height_val", prefs.getString("pref_vr_height", "175.0")?.toFloatOrNull() ?: 175f)
+        } catch (e: Exception) {
+            175f
+        }
 
+        val ipdMm = try {
+            prefs.getFloat("pref_vr_eye_offset_val", prefs.getString("pref_vr_eye_offset", "64.0")?.toFloatOrNull() ?: 64f)
+        } catch (e: Exception) {
+            64f
+        }
+
+        val stance = prefs.getString("pref_vr_stance", "standing")
+        val isSeated = stance.equals("seated", ignoreCase = true)
+
+        val badge = findViewById<TextView>(R.id.vr_calibration_badge)
+        val description = findViewById<TextView>(R.id.vr_calibration_description)
+
+        val totalInches = (heightCm / 2.54f).toInt()
+        val feet = totalInches / 12
+        val inches = totalInches % 12
+        val stanceLabel = if (isSeated) "Seated Mode" else "Standing Mode"
+
+        badge?.text = "${heightCm.toInt()} cm • ${ipdMm.toInt()} mm"
+        description?.text = "Height: ${heightCm.toInt()} cm (${feet}'${inches}\") • Eye IPD: ${String.format(java.util.Locale.ROOT, "%.1f", ipdMm)} mm • $stanceLabel"
+    }
+
+    private fun updateGameDataDisplay() {
+        val gameDataPath = prefs.getString("game_files", "")!!
         val pathDisplay = findViewById<TextView>(R.id.game_data_path)
         val badge = findViewById<TextView>(R.id.game_data_badge)
-        val statusIcon = findViewById<ImageView>(R.id.game_data_status_icon)
-        val summaryDisplay = findViewById<TextView>(R.id.game_data_diagnostic_summary)
-        val statusMsg = findViewById<TextView>(R.id.status_message)
-
-        if (result.status == DataFilesDiagnostic.DiagnosticStatus.NOT_CONFIGURED) {
+        val statusIcon = findViewById<android.widget.ImageView>(R.id.game_data_status_icon)
+        
+        if (gameDataPath.isEmpty()) {
             pathDisplay.text = "(not configured - tap button below)"
             pathDisplay.setTextColor(getColor(R.color.text_secondary))
             badge.text = "Required"
+            badge.setTextColor(getColor(R.color.status_warning))
             statusIcon.setImageResource(R.drawable.ic_folder_open_24)
-            statusIcon.setColorFilter(getColor(R.color.gold_accent))
-            summaryDisplay.text = "Select your Morrowind game folder containing 'Data Files'."
-            cardDataDiagnosticAlert.visibility = android.view.View.GONE
-            statusMsg.text = "Ready to configure"
-            return
-        }
-
-        pathDisplay.text = result.configuredPath
-        pathDisplay.setTextColor(getColor(R.color.text_primary))
-
-        if (result.isValid) {
-            badge.text = "Verified"
+        } else {
+            pathDisplay.text = gameDataPath
+            pathDisplay.setTextColor(getColor(R.color.text_primary))
+            badge.text = "Configured"
             badge.setTextColor(getColor(R.color.status_ready))
             statusIcon.setImageResource(R.drawable.ic_check_circle_24)
-            statusIcon.setColorFilter(getColor(R.color.status_ready))
+        }
+        Log.d(TAG, "updateGameDataDisplay: path='$gameDataPath'")
+    }
+    
+    private fun selectGameData() {
+        Log.d(TAG, "selectGameData: launching file browser")
+        val chooser = StorageChooser.Builder()
+            .withActivity(this)
+            .withFragmentManager(fragmentManager)
+            .withMemoryBar(true)
+            .allowCustomPath(true)
+            .setType(StorageChooser.DIRECTORY_CHOOSER)
+            .build()
 
-            val expansionsInfo = when {
-                result.tribunalFound && result.bloodmoonFound -> "GOTY (Tribunal + Bloodmoon)"
-                result.tribunalFound -> "+ Tribunal"
-                result.bloodmoonFound -> "+ Bloodmoon"
-                else -> "Base Game"
-            }
-            val sizeStr = DataFilesDiagnostic.formatHumanSize(result.totalSizeBytes)
-            summaryDisplay.text = "Morrowind.esm (${DataFilesDiagnostic.formatHumanSize(result.morrowindEsmSize)}) • ${result.bsaFiles.size} BSA(s) • $expansionsInfo • $sizeStr"
-            summaryDisplay.setTextColor(getColor(R.color.text_secondary))
-            cardDataDiagnosticAlert.visibility = android.view.View.GONE
-            statusMsg.text = "Ready to launch!"
-        } else {
-            badge.text = when (result.status) {
-                DataFilesDiagnostic.DiagnosticStatus.MISSING_MORROWIND_ESM -> "Missing ESM"
-                DataFilesDiagnostic.DiagnosticStatus.MISSING_CORE_ARCHIVES -> "Missing BSA"
-                DataFilesDiagnostic.DiagnosticStatus.EMPTY_MORROWIND_ESM -> "Corrupted"
-                DataFilesDiagnostic.DiagnosticStatus.NOT_FOUND -> "Not Found"
-                DataFilesDiagnostic.DiagnosticStatus.PERMISSION_DENIED -> "No Permission"
-                else -> "Incomplete"
-            }
-            badge.setTextColor(getColor(R.color.status_error))
-            statusIcon.setImageResource(R.drawable.ic_warning_amber_24)
-            statusIcon.setColorFilter(getColor(R.color.status_error))
+        chooser.show()
 
-            summaryDisplay.text = "${result.summaryTitle}: ${result.missingCrucialItems.firstOrNull() ?: "Assets missing"}"
-            summaryDisplay.setTextColor(getColor(R.color.status_error))
-
-            cardDataDiagnosticAlert.visibility = android.view.View.VISIBLE
-            diagnosticAlertTitle.text = result.summaryTitle
-            diagnosticAlertMessage.text = "${result.summaryMessage}\n\nFix: ${result.remediationAdvice}"
-            statusMsg.text = "Game files need attention"
+        chooser.setOnSelectListener { path ->
+            Log.d(TAG, "selectGameData: user selected path='$path'")
+            setupData(path)
         }
     }
-
-    private fun selectGameData() {
-        val currentPath = prefs.getString("game_files", File(Environment.getExternalStorageDirectory(), "Morrowind").absolutePath)
-        val dialog = ui.dialog.FolderChooserDialog(
-            context = this,
-            initialPath = currentPath,
-            onFolderSelected = { selectedPath ->
-                setupData(selectedPath)
-            },
-            onLaunchSafPicker = {
-                // Fallback to manual text entry or SAF
-                val input = android.widget.EditText(this).apply {
-                    setText(currentPath)
-                    setSelection(text.length)
-                }
-                AlertDialog.Builder(this)
-                    .setTitle("Manual Path Entry")
-                    .setView(input)
-                    .setPositiveButton("Set") { _, _ ->
-                        setupData(input.text.toString().trim())
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .show()
-            }
-        )
-        dialog.show()
-    }
-
+    
     private fun setupData(path: String) {
+        Log.d(TAG, "setupData: path='$path'")
         val cleanPath = path.trim()
         if (cleanPath.isEmpty()) return
 
-        val diagnostic = DataFilesDiagnostic.check(this, cleanPath)
-        lastDiagnosticResult = diagnostic
+        var gameFiles = ""
+        val inst = GameInstaller(cleanPath)
 
-        if (diagnostic.isValid) {
-            val inst = GameInstaller(cleanPath)
+        if (inst.check()) {
+            Log.d(TAG, "setupData: path is valid")
             inst.setNomedia()
-            inst.convertIni(GameInstaller.DEFAULT_CHARSET_PREF)
-
-            with(prefs.edit()) {
-                putString("game_files", cleanPath)
-                apply()
-            }
-
-            Toast.makeText(
-                this,
-                "Game data verified and configured!\n(${diagnostic.esmFiles.size} ESMs, ${diagnostic.bsaFiles.size} BSAs)",
-                Toast.LENGTH_LONG
-            ).show()
+            inst.convertIni(prefs.getString("pref_encoding", GameInstaller.DEFAULT_CHARSET_PREF) ?: GameInstaller.DEFAULT_CHARSET_PREF)
+            gameFiles = cleanPath
+            val resolvedData = inst.findDataFiles()
+            Toast.makeText(this, "Game data configured!\nData: $resolvedData", Toast.LENGTH_LONG).show()
         } else {
-            with(prefs.edit()) {
-                putString("game_files", cleanPath)
-                apply()
-            }
-            DataFilesDiagnostic.showDiagnosticDialog(this, diagnostic) {
-                selectGameData()
+            Log.d(TAG, "setupData: path is NOT valid")
+            AlertDialog.Builder(this)
+                .setTitle(R.string.data_error_title)
+                .setMessage("Could not find Morrowind game data in:\n\n$cleanPath\n\nPlease make sure this folder (or a subfolder) contains:\n• Morrowind.esm (or .omwgame / .esm files)\n• or a 'Data Files' folder\n\nTip: You can select the Morrowind root folder OR the 'Data Files' folder directly.")
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton("Manual Path") { _, _ ->
+                    selectGameData()
+                }
+                .show()
+        }
+
+        with(prefs.edit()) {
+            putString("game_files", gameFiles)
+            apply()
+        }
+        
+        updateGameDataDisplay()
+        val statusMsg = findViewById<TextView>(R.id.status_message)
+        statusMsg.text = if (gameFiles.isEmpty()) "Invalid game data" else "Game data configured!"
+    }
+
+    private fun showError(title: Int, message: Int, url: String? = null) {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton(android.R.string.ok) { _: DialogInterface, _: Int -> }
+
+        if (url != null) {
+            dialog.setNeutralButton(R.string.dialog_howto) { _, _ ->
+                openUrl(url)
             }
         }
-        runDiagnosticCheck()
+
+        dialog.show()
+    }
+
+    private fun openUrl(url: String) {
+        try {
+            val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            startActivity(browserIntent)
+        } catch (e: Exception) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.no_browser_title)
+                .setMessage(getString(R.string.no_browser_message, url))
+                .setPositiveButton(android.R.string.ok) { _, _ -> }
+                .show()
+        }
     }
 
     private fun checkStartGame() {
-        val diagnosticResult = DataFilesDiagnostic.check(this)
-        lastDiagnosticResult = diagnosticResult
-
-        if (!diagnosticResult.isValid) {
+        Log.d(TAG, "checkStartGame: checking if game data is configured")
+        // First, check that there are game files present
+        val gameFilesPath = prefs.getString("game_files", "")!!
+        if (gameFilesPath.isEmpty()) {
+            Log.d(TAG, "checkStartGame: no game data configured")
             launchInProgress = false
-            setControlsEnabled(true)
-            runDiagnosticCheck()
-            DataFilesDiagnostic.showDiagnosticDialog(this, diagnosticResult) {
-                selectGameData()
-            }
+            launchGameButton.isEnabled = true
+            selectDataButton.isEnabled = true
+            manageModsButton.isEnabled = true
+            settingsButton.isEnabled = true
+            val statusMsg = findViewById<TextView>(R.id.status_message)
+            statusMsg.text = "Please select game data first"
+            return
+        }
+        
+        val inst = GameInstaller(gameFilesPath)
+        if (!inst.check()) {
+            Log.d(TAG, "checkStartGame: game data path is no longer valid")
+            launchInProgress = false
+            launchGameButton.isEnabled = true
+            selectDataButton.isEnabled = true
+            manageModsButton.isEnabled = true
+            settingsButton.isEnabled = true
+            vrCalibrationButton.isEnabled = true
+            AlertDialog.Builder(this)
+                .setTitle(R.string.no_data_files_title)
+                .setMessage(R.string.no_data_files_message)
+                .setNeutralButton(R.string.dialog_howto) { _, _ ->
+                    openUrl("https://omw.xyz.is/game.html")
+                }
+                .setPositiveButton(android.R.string.ok) { _: DialogInterface, _: Int -> }
+                .show()
             return
         }
 
+        if (!utils.RuntimeValidator.isRuntimePayloadValid(this)) {
+            Log.e(TAG, "checkStartGame: runtime payload validation failed")
+            launchInProgress = false
+            launchGameButton.isEnabled = true
+            selectDataButton.isEnabled = true
+            manageModsButton.isEnabled = true
+            settingsButton.isEnabled = true
+            vrCalibrationButton.isEnabled = true
+
+            val missingSummary = utils.RuntimeValidator.getMissingSummary(this)
+            AlertDialog.Builder(this)
+                .setTitle("Engine Files Missing")
+                .setMessage("This APK is missing OpenMW VR engine components:\n\n$missingSummary\n\nThe game cannot launch without these native libraries and assets. Please build the native engine first using:\ncd buildscripts && ./build.sh --arch arm64\nthen rebuild the APK.")
+                .setPositiveButton(android.R.string.ok) { _: DialogInterface, _: Int -> }
+                .show()
+            return
+        }
+
+        Log.d(TAG, "checkStartGame: game data and engine payload valid, starting game")
         startGame()
     }
 
     private fun startGame() {
-        val intent = Intent(this, GameActivity::class.java)
+        Log.d(TAG, "startGame: routing through VrEntryActivity for full prep")
+        val intent = Intent(this, VrEntryActivity::class.java)
+        intent.putExtra(VrEntryActivity.EXTRA_AUTO_START_GAME, true)
         startActivity(intent)
         finish()
-    }
-
-    private fun checkAndPromptPendingCrash() {
-        if (utils.EngineLogger.hasPendingCrash(this)) {
-            val report = utils.EngineLogger.getPendingCrashReport(this) ?: "Unknown crash details"
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Previous Crash Detected")
-                .setMessage("It looks like OpenMW VR encountered an unexpected crash or infinite loading issue during your last session.\n\nWould you like to submit the crash log to developers for analysis?")
-                .setPositiveButton("Submit Report") { _, _ ->
-                    Toast.makeText(this, "Crash report submitted successfully! Thank you for helping improve OpenMW VR.", Toast.LENGTH_LONG).show()
-                    utils.EngineLogger.clearPendingCrash(this)
-                }
-                .setNeutralButton("View Details") { _, _ ->
-                    android.app.AlertDialog.Builder(this)
-                        .setTitle("Crash Log Details")
-                        .setMessage(report)
-                        .setPositiveButton("Submit") { _, _ ->
-                            Toast.makeText(this, "Crash report submitted successfully! Thank you for helping improve OpenMW VR.", Toast.LENGTH_LONG).show()
-                            utils.EngineLogger.clearPendingCrash(this)
-                        }
-                        .setNegativeButton("Dismiss") { _, _ ->
-                            utils.EngineLogger.clearPendingCrash(this)
-                        }
-                        .show()
-                }
-                .setNegativeButton("Dismiss") { _, _ ->
-                    utils.EngineLogger.clearPendingCrash(this)
-                }
-                .show()
-        }
     }
 }

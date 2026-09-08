@@ -1,232 +1,221 @@
+/*
+    Copyright (C) 2015-2017 sandstranger
+    Copyright (C) 2018, 2019 Ilya Zhuravlev
+
+    This file is part of OpenMW-Android.
+
+    OpenMW-Android is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    OpenMW-Android is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with OpenMW-Android.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package ui.activity
 
-import android.app.AlertDialog
-import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
-import android.os.Environment
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.View
-import android.view.ViewGroup
+import android.os.Process
+import android.preference.PreferenceManager
+import android.system.ErrnoException
+import android.system.Os
+import android.util.Log
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import androidx.preference.PreferenceManager
+import android.view.View
+import android.widget.RelativeLayout
+import org.json.JSONObject
 import com.libopenmw.openmw.R
-import file.DataFilesDiagnostic
-import file.GameInstaller
-import utils.EngineLogger
 import java.io.File
 
-class GameActivity : AppCompatActivity(), SurfaceHolder.Callback {
+import org.libsdl.app.SDLActivity
 
-    private lateinit var surfaceView: SurfaceView
-    private var isSafeMode: Boolean = false
-    private var gamePath: String = ""
-    private var configFile: File? = null
+import constants.Constants
+import cursor.MouseCursor
+import parser.CommandlineParser
+import ui.controls.Osc
 
-    init {
-        try {
-            System.loadLibrary("SDL2")
-            System.loadLibrary("openxr_loader")
-            System.loadLibrary("openmw")
-            EngineLogger.i("GameActivity", "Native OpenMW and OpenXR libraries loaded successfully.")
-        } catch (e: Throwable) {
-            EngineLogger.w("GameActivity", "Native library load warning: ${e.message}")
+import utils.Utils.hideAndroidControls
+
+/**
+ * Enum for different mouse modes as specified in settings
+ */
+enum class MouseMode {
+    Hybrid,
+    Joystick,
+    Touch;
+
+    companion object {
+        fun get(s: String): MouseMode {
+            return when (s) {
+                "joystick" -> Joystick
+                "touch" -> Touch
+                else -> Hybrid
+            }
         }
     }
+}
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+class GameActivity : SDLActivity() {
+
+    private var prefs: SharedPreferences? = null
+
+    val layout: RelativeLayout
+        get() = SDLActivity.mLayout as RelativeLayout
+
+    override fun loadLibraries() {
+        prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val physicsFPS = prefs!!.getString("pref_physicsFPS2", "")
+        if (!physicsFPS!!.isEmpty()) {
+            try {
+                Os.setenv("OPENMW_PHYSICS_FPS", physicsFPS, true)
+                Os.setenv("OSG_TEXT_SHADER_TECHNIQUE", "NO_TEXT_SHADER", true)
+            } catch (e: ErrnoException) {
+                Log.e("OpenMW", "Failed setting environment variables.")
+                e.printStackTrace()
+            }
+        }
+
+        System.loadLibrary("c++_shared")
+        System.loadLibrary("openal")
+        System.loadLibrary("SDL2")
+        try {
+            // VR build always uses GLES2 (GL4ES) with native GLES3 swapchain bypass
+            Os.setenv("OPENMW_GLES_VERSION", "2", true)
+            Os.setenv("LIBGL_ES", "2", true)
+            Log.i("OpenMW", "Graphics bootstrap: VR build fixed to GLES2/GL4ES")
+        } catch (e: ErrnoException) {
+            Log.e("OpenMW", "Failed setting graphics environment variables.", e)
+        }
+
+        System.loadLibrary("GL")
+        System.loadLibrary("openxr_loader")
+        System.loadLibrary("openmw")
+    }
+
+    override fun getMainSharedObject(): String {
+        return "libopenmw.so"
+    }
+
+    override fun shouldRequireWindowFocusForResume(): Boolean {
+        return false
+    }
+
+    public override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
+        ensureNativeLibrariesLoaded()
+        configureQuestOpenXrRuntime()
+        initOpenXRLoader()
+        KeepScreenOn()
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        getPathToJni(filesDir.parent, Constants.USER_FILE_STORAGE)
+        showControls()
+        enforceImmersiveMode()
+    }
 
-        // Enable immersive VR / sticky full-screen mode
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        )
+    override fun onResume() {
+        super.onResume()
+        enforceImmersiveMode()
+    }
 
-        try {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-            val defaultPath = File(Environment.getExternalStorageDirectory(), "Morrowind").absolutePath
-            gamePath = prefs.getString("game_files", defaultPath) ?: defaultPath
-            isSafeMode = prefs.getBoolean("safe_mode_enabled", false)
+    private fun showControls() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
 
-            EngineLogger.i("GameActivity", "Starting OpenMW Engine Session. Mode: ${if (isSafeMode) "Safe Mode (Flat-Screen)" else "OpenXR VR"}, Game Path: $gamePath")
+        mouseMode = MouseMode.get((prefs.getString("pref_mouse_mode",
+            getString(R.string.pref_mouse_mode_default))!!))
 
-            // Verify game files exist
-            val diagnostic = DataFilesDiagnostic.check(this, gamePath)
-            if (!diagnostic.isValid) {
-                EngineLogger.e("GameActivity", "Invalid game data files detected: ${diagnostic.summaryTitle}")
-                AlertDialog.Builder(this)
-                    .setTitle("Game Data Error")
-                    .setMessage("${diagnostic.summaryTitle}\n\n${diagnostic.remediationAdvice}")
-                    .setPositiveButton("Select Correct Folder") { _, _ ->
-                        startActivity(Intent(this, LauncherActivity::class.java))
-                        finish()
-                    }
-                    .setCancelable(false)
-                    .show()
-                return
-            }
+        val pref_hide_controls = prefs.getBoolean(Constants.HIDE_CONTROLS, false)
+        var osc: Osc? = null
+        if (!pref_hide_controls) {
+            val layout = layout
+            osc = Osc()
+            osc.placeElements(layout)
+        }
+        MouseCursor(this, osc)
+    }
 
-            // Generate openmw.cfg pointing to actual game data and plugins
-            configFile = generateOpenMwConfig(gamePath)
-
-            val rootLayout = FrameLayout(this).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                setBackgroundColor(0xFF000000.toInt())
-            }
-
-            // SDL / Native SurfaceView for OpenMW rendering
-            surfaceView = SurfaceView(this).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                holder.addCallback(this@GameActivity)
-            }
-            rootLayout.addView(surfaceView)
-
-            // Minimal overlay menu button in top right
-            val hudOverlay = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(24, 24, 24, 24)
-                gravity = android.view.Gravity.TOP or android.view.Gravity.END
-            }
-
-            val btnMenu = Button(this).apply {
-                text = "⚙ MENU"
-                textSize = 12f
-                setBackgroundColor(0x99000000.toInt())
-                setTextColor(0xFFFFFFFF.toInt())
-                setOnClickListener { showInGameMenu() }
-            }
-            hudOverlay.addView(btnMenu)
-            rootLayout.addView(hudOverlay)
-
-            setContentView(rootLayout)
-            EngineLogger.i("GameActivity", "OpenMW rendering surface and config initialized.")
-
-        } catch (e: Exception) {
-            val stackTrace = android.util.Log.getStackTraceString(e)
-            EngineLogger.e("GameActivity", "Fatal error starting GameActivity: $stackTrace")
-            
-            AlertDialog.Builder(this)
-                .setTitle("Engine Initialization Error")
-                .setMessage("Failed to start OpenMW engine:\n${e.message}\n\nPlease check Engine Logs.")
-                .setPositiveButton("View Logs") { _, _ ->
-                    ui.dialog.EngineLogDialog(this).show()
-                }
-                .setNegativeButton("Return to Launcher") { _, _ ->
-                    startActivity(Intent(this, LauncherActivity::class.java))
-                    finish()
-                }
-                .setCancelable(false)
-                .show()
+    private fun KeepScreenOn() {
+        val needKeepScreenOn = PreferenceManager.getDefaultSharedPreferences(this).getBoolean("pref_screen_keeper", false)
+        if (needKeepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        EngineLogger.i("GameActivity", "OpenMW rendering surface created. Handing off to native OpenMW engine...")
-        val configPath = configFile?.absolutePath ?: ""
-        nativeInitEngine(gamePath, configPath, isSafeMode)
-    }
-
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        EngineLogger.i("GameActivity", "OpenMW rendering surface changed: ${width}x${height}")
-        nativeResizeEngine(width, height)
-    }
-
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        EngineLogger.i("GameActivity", "OpenMW rendering surface destroyed.")
-        nativeDestroyEngine()
-    }
-
-    private fun generateOpenMwConfig(path: String): File {
-        val configDir = File(filesDir, "config")
-        if (!configDir.exists()) configDir.mkdirs()
-
-        val cfgFile = File(configDir, "openmw.cfg")
-        val sb = StringBuilder()
-
-        val gameInstaller = GameInstaller(path)
-        val dataFilesDir = gameInstaller.findDataFiles() ?: File(path, "Data Files")
-
-        sb.append("# OpenMW Configuration generated for Android OpenMW VR\n")
-        sb.append("data=\"${dataFilesDir.absolutePath}\"\n")
-        sb.append("data=\"$path\"\n\n")
-
-        // Add BSA archives
-        val bsaFiles = dataFilesDir.listFiles()?.filter { it.name.endsWith(".bsa", ignoreCase = true) } ?: emptyList()
-        for (bsa in bsaFiles) {
-            sb.append("fallback-archive=${bsa.name}\n")
-        }
-
-        // Add Master / Plugin files (.esm, .esp)
-        val esmFiles = dataFilesDir.listFiles()?.filter { it.name.endsWith(".esm", ignoreCase = true) } ?: emptyList()
-        for (esm in esmFiles) {
-            sb.append("content=${esm.name}\n")
-        }
-        val espFiles = dataFilesDir.listFiles()?.filter { it.name.endsWith(".esp", ignoreCase = true) } ?: emptyList()
-        for (esp in espFiles) {
-            sb.append("content=${esp.name}\n")
-        }
-
-        cfgFile.writeText(sb.toString())
-        EngineLogger.i("GameActivity", "Generated openmw.cfg at ${cfgFile.absolutePath} with ${esmFiles.size} plugins and ${bsaFiles.size} BSAs.")
-        return cfgFile
-    }
-
-    private fun showInGameMenu() {
-        AlertDialog.Builder(this)
-            .setTitle("OpenMW Session Menu")
-            .setMessage("Mode: ${if (isSafeMode) "Safe Mode (Flat-Screen)" else "OpenXR VR"}\nGame Path: $gamePath\nConfig: ${configFile?.absolutePath}")
-            .setPositiveButton("Resume Game", null)
-            .setNeutralButton("View Engine Logs") { _, _ ->
-                ui.dialog.EngineLogDialog(this).show()
-            }
-            .setNegativeButton("Quit to Launcher") { _, _ ->
-                startActivity(Intent(this, LauncherActivity::class.java))
-                finish()
-            }
-            .show()
-    }
-
-    private fun nativeInitEngine(gameDir: String, configPath: String, safeMode: Boolean) {
-        EngineLogger.i("GameActivity", "nativeInitEngine -> gameDir: $gameDir, configPath: $configPath, safeMode: $safeMode")
-        try {
-            // Attempt native JNI hook invocation if available in libopenmw.so
-            // openmwNativeInit(gameDir, configPath, safeMode)
-        } catch (e: UnsatisfiedLinkError) {
-            EngineLogger.w("GameActivity", "Native OpenMW JNI symbol binding warning: ${e.message}")
-        }
-    }
-
-    private fun nativeResizeEngine(width: Int, height: Int) {
-        EngineLogger.i("GameActivity", "nativeResizeEngine: ${width}x${height}")
-    }
-
-    private fun nativeDestroyEngine() {
-        EngineLogger.i("GameActivity", "nativeDestroyEngine called.")
-    }
-
-    override fun onDestroy() {
+    public override fun onDestroy() {
         super.onDestroy()
-        EngineLogger.i("GameActivity", "GameActivity destroyed.")
+    }
+
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enforceImmersiveMode()
+        }
+    }
+
+    private fun enforceImmersiveMode() {
+        hideAndroidControls(this)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
+        }
+    }
+
+    override fun getArguments(): Array<String> {
+        val cmd = PreferenceManager.getDefaultSharedPreferences(this).getString("commandLine", "")
+        val commandlineParser = CommandlineParser(cmd!!)
+        return commandlineParser.argv
+    }
+
+    @Synchronized
+    private fun ensureNativeLibrariesLoaded() {
+        if (librariesLoaded)
+            return
+        loadLibraries()
+        librariesLoaded = true
+    }
+
+    private external fun getPathToJni(path_global: String, path_user: String)
+
+    private external fun initOpenXRLoader()
+
+    private external fun setOpenXrRuntimeJson(runtimeJsonPath: String)
+
+    private fun configureQuestOpenXrRuntime() {
+        try {
+            val runtimeDir = File(filesDir, "openxr")
+            if (!runtimeDir.exists()) {
+                runtimeDir.mkdirs()
+            }
+            val runtimeJson = File(runtimeDir, "active_runtime.aarch64.json")
+            val json = JSONObject()
+            val runtime = JSONObject()
+            runtime.put("library_path", "libopenxr_forwardloader.so")
+            json.put("file_format_version", "1.0.0")
+            json.put("runtime", runtime)
+            runtimeJson.writeText(json.toString())
+            setOpenXrRuntimeJson(runtimeJson.absolutePath)
+            Log.i("OpenMW", "OpenXR runtime bootstrap: Quest Forward Loader -> " + runtimeJson.absolutePath)
+        } catch (e: Exception) {
+            Log.e("OpenMW", "Failed to configure OpenXR runtime JSON", e)
+        }
+    }
+
+    companion object {
+        var mouseMode = MouseMode.Hybrid
+        @Volatile
+        private var librariesLoaded = false
     }
 }
