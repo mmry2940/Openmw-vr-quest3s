@@ -69,6 +69,19 @@ class GameActivity : SDLActivity() {
     val layout: RelativeLayout
         get() = SDLActivity.mLayout as RelativeLayout
 
+    private fun loadLib(libraryName: String) {
+        try {
+            System.loadLibrary(libraryName)
+        } catch (e: UnsatisfiedLinkError) {
+            val customLib = File(filesDir, "jniLibs/lib$libraryName.so")
+            if (customLib.exists()) {
+                System.load(customLib.absolutePath)
+            } else {
+                throw e
+            }
+        }
+    }
+
     override fun loadLibraries() {
         prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val physicsFPS = prefs!!.getString("pref_physicsFPS2", "")
@@ -82,9 +95,9 @@ class GameActivity : SDLActivity() {
             }
         }
 
-        System.loadLibrary("c++_shared")
-        System.loadLibrary("openal")
-        System.loadLibrary("SDL2")
+        loadLib("c++_shared")
+        loadLib("openal")
+        loadLib("SDL2")
         try {
             // VR build always uses GLES2 (GL4ES) with native GLES3 swapchain bypass
             Os.setenv("OPENMW_GLES_VERSION", "2", true)
@@ -94,9 +107,9 @@ class GameActivity : SDLActivity() {
             Log.e("OpenMW", "Failed setting graphics environment variables.", e)
         }
 
-        System.loadLibrary("GL")
-        System.loadLibrary("openxr_loader")
-        System.loadLibrary("openmw")
+        loadLib("GL")
+        loadLib("openxr_loader")
+        loadLib("openmw")
     }
 
     override fun getMainSharedObject(): String {

@@ -11,8 +11,9 @@ object RuntimeValidator {
     fun hasNativeLibraries(context: Context): Boolean {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val hasOpenmw = File(nativeDir, "libopenmw.so").exists()
-        Log.d(TAG, "hasNativeLibraries: dir=$nativeDir, hasOpenmw=$hasOpenmw")
-        return hasOpenmw
+        val customHasOpenmw = File(context.filesDir, "jniLibs/libopenmw.so").exists()
+        Log.d(TAG, "hasNativeLibraries: dir=$nativeDir, hasOpenmw=$hasOpenmw, customHasOpenmw=$customHasOpenmw")
+        return hasOpenmw || customHasOpenmw
     }
 
     fun hasBundledAssets(context: Context): Boolean {

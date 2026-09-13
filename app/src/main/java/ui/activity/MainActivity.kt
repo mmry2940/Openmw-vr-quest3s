@@ -63,6 +63,40 @@ import java.util.*
 open class MainActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
 
+    private val importJniLibsLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            val targetDir = File(filesDir, "jniLibs")
+            if (!targetDir.exists()) {
+                targetDir.mkdirs()
+            }
+            var count = 0
+            for (uri in uris) {
+                try {
+                    val cursor = contentResolver.query(uri, null, null, null, null)
+                    var name = "unknown.so"
+                    cursor?.use {
+                        if (it.moveToFirst()) {
+                            val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (nameIndex >= 0) {
+                                name = it.getString(nameIndex)
+                            }
+                        }
+                    }
+                    
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        File(targetDir, name).outputStream().use { outputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
+                    count++
+                } catch(e: Exception) {
+                    Log.e(TAG, "Failed to import $uri", e)
+                }
+            }
+            Toast.makeText(this, "Imported $count library files. You can try launching again.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MyApp.app.defaultScaling = determineScaling()
@@ -611,11 +645,17 @@ open class MainActivity : AppCompatActivity() {
         }
 
         val missingSummary = utils.RuntimeValidator.getMissingSummary(this)
-        AlertDialog.Builder(this)
+        val builder = AlertDialog.Builder(this)
             .setTitle("OpenMW Runtime Files Missing")
             .setMessage("This APK is missing OpenMW VR engine components:\n\n$missingSummary\n\nThe game cannot launch without these native libraries and assets. Please build the native engine first using:\ncd buildscripts && ./build.sh --arch arm64\nthen rebuild the APK.")
             .setPositiveButton(android.R.string.ok) { _: DialogInterface, _: Int -> }
-            .show()
+
+        if (!utils.RuntimeValidator.hasNativeLibraries(this)) {
+            builder.setNeutralButton("Import jniLibs") { _, _ ->
+                importJniLibsLauncher.launch(arrayOf("*/*"))
+            }
+        }
+        builder.show()
         return false
     }
 
